@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EngLog Pro - PDF 穩定版</title>
+    <title>EngLog Pro v6.0 - 全功能整合版</title>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://accounts.google.com/gsi/client"></script>
@@ -26,18 +26,21 @@
         <header class="h-20 flex-none glass border-b border-white/5 px-8 flex justify-between items-center z-50">
             <div class="flex items-center gap-6">
                 <h1 class="text-xl font-black italic text-white uppercase tracking-tighter">ENG<span class="text-cyan-400">LOG</span></h1>
-                <nav v-if="isLoggedIn" class="flex gap-2">
+                <nav class="flex gap-2">
                     <button @click="openEditor('note')" class="px-4 py-2 rounded-xl bg-sky-500/10 text-sky-400 text-xs font-bold border border-sky-500/20 hover:bg-sky-500 hover:text-white transition">撰寫日誌</button>
                     <button @click="openEditor('buy')" class="px-4 py-2 rounded-xl bg-emerald-500/10 text-emerald-400 text-xs font-bold border border-emerald-500/20 hover:bg-emerald-500 hover:text-white transition">採購清單</button>
-                    <button @click="openEditor('file')" class="px-4 py-2 rounded-xl bg-red-500/10 text-red-400 text-xs font-bold border border-red-500/20 hover:bg-red-500 hover:text-white transition">上傳文件</button>
+                    <button @click="openEditor('file')" class="px-4 py-2 rounded-xl bg-red-500/10 text-red-400 text-xs font-bold border border-red-500/20 hover:bg-red-500 hover:text-white transition">文件上傳</button>
                 </nav>
             </div>
 
             <div class="flex items-center gap-4">
+                <button @click="downloadBackup" class="text-slate-500 hover:text-white transition p-2" title="下載備份">
+                    <i class="fas fa-download"></i>
+                </button>
                 <div v-if="isLoggedIn" class="flex items-center gap-3 bg-cyan-500/5 px-4 py-2 rounded-full border border-cyan-500/20">
                     <i class="fas fa-cloud-check text-cyan-400 text-[10px]"></i>
-                    <span class="text-[9px] font-bold text-cyan-400 uppercase tracking-widest">Cloud Sync Active</span>
-                    <button @click="handleSignout" class="text-[9px] text-slate-500 hover:text-red-400 ml-2">登出</button>
+                    <span class="text-[9px] font-bold text-cyan-400 uppercase tracking-widest">Cloud Ready</span>
+                    <button @click="handleSignout" class="text-[9px] text-slate-500 hover:text-red-400 ml-1">登出</button>
                 </div>
                 <button v-else @click="handleAuth" class="bg-white text-slate-900 px-6 py-2 rounded-full text-xs font-black shadow-lg hover:bg-cyan-400 transition">登入 Google 同步</button>
             </div>
@@ -55,13 +58,7 @@
             </aside>
 
             <main class="flex-1 overflow-y-auto p-12 custom-scroll bg-slate-900/10 space-y-10">
-                <div v-if="!isLoggedIn" class="max-w-xl mx-auto text-center py-20 border-2 border-dashed border-slate-800 rounded-[3rem]">
-                    <i class="fas fa-cloud-moon text-5xl text-slate-700 mb-6"></i>
-                    <h2 class="text-xl font-bold mb-4 text-white">尚未登入</h2>
-                    <p class="text-slate-500 text-sm">請先登入 Google 以同步您的日誌與文件。</p>
-                </div>
-
-                <div v-else v-for="event in sortedEvents" :id="'event-' + event.id" 
+                <div v-for="event in sortedEvents" :id="'event-' + event.id" 
                      class="max-w-3xl mx-auto event-card p-8 rounded-[2rem] shadow-2xl relative"
                      :class="event.needsTodo ? (event.isDone ? 'is-done' : 'is-pending') : ''">
                     
@@ -87,23 +84,19 @@
 
                     <div class="bg-black/20 p-6 rounded-2xl border border-white/5">
                         <div v-if="event.type === 'note'" class="text-slate-300 text-sm font-mono leading-relaxed whitespace-pre-wrap">{{ event.content }}</div>
-                        
                         <div v-if="event.type === 'buy'" class="space-y-1">
                             <div v-for="i in event.items" class="flex justify-between text-xs py-1 border-b border-white/5">
                                 <span class="text-slate-300">{{ i.name }}</span>
                                 <span class="text-emerald-400 font-bold">NT$ {{ i.price }}</span>
                             </div>
                         </div>
-
                         <div v-if="event.type === 'file'" class="flex items-center gap-4">
                             <i class="fas fa-file-pdf text-red-500 text-3xl"></i>
                             <div class="flex-1 min-w-0">
                                 <p class="text-xs text-white font-bold truncate">{{ event.fileName }}</p>
-                                <p class="text-[10px] text-slate-500 uppercase tracking-widest">PDF Document</p>
+                                <p class="text-[10px] text-slate-500 uppercase tracking-widest">Document</p>
                             </div>
-                            <button @click="viewPDF(event.fileData)" class="px-6 py-2 bg-white text-slate-900 text-[10px] font-black rounded-xl hover:bg-cyan-400 transition uppercase tracking-widest">
-                                Open File
-                            </button>
+                            <button @click="viewPDF(event.fileData)" class="px-6 py-2 bg-white text-slate-900 text-[10px] font-black rounded-xl hover:bg-cyan-400 transition uppercase tracking-widest">Open File</button>
                         </div>
                     </div>
                 </div>
@@ -115,33 +108,17 @@
             <div class="bg-slate-900 w-full max-w-xl rounded-[3rem] p-12 border border-white/10 shadow-2xl">
                 <h3 class="text-3xl font-black mb-8 italic text-white uppercase tracking-tighter">New <span class="text-cyan-400">{{ editorType }}</span></h3>
                 <div class="space-y-6">
-                    <div>
-                        <label class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 block italic">Event Title</label>
-                        <input v-model="tempTitle" class="w-full bg-slate-950 p-5 rounded-2xl border border-white/5 text-white font-bold focus:border-cyan-500 outline-none" placeholder="輸入標題...">
-                    </div>
+                    <input v-model="tempTitle" class="w-full bg-slate-950 p-5 rounded-2xl border border-white/5 text-white font-bold" placeholder="事件標題...">
                     <div class="flex items-center gap-3 bg-white/5 p-4 rounded-2xl border border-white/5">
                         <input type="checkbox" v-model="tempNeedsTodo" id="td-check" class="w-5 h-5 accent-cyan-500">
-                        <label for="td-check" class="text-sm font-bold text-slate-400 italic">標記為待辦任務 (Action Required)</label>
+                        <label for="td-check" class="text-sm font-bold text-slate-400 italic">標記為待辦任務</label>
                     </div>
-
-                    <div v-if="editorType === 'note'"><textarea v-model="tempContent" class="w-full h-40 bg-slate-950 p-5 rounded-2xl border border-white/5 text-sm font-mono text-slate-300" placeholder="內容描述..."></textarea></div>
-                    
-                    <div v-if="editorType === 'file'" class="space-y-4">
-                        <div class="p-10 border-2 border-dashed border-slate-800 rounded-2xl text-center">
-                            <input type="file" @change="handleFileUpload" accept="application/pdf,image/*" class="text-xs text-slate-500">
-                            <p class="text-[10px] text-slate-600 mt-2">支援 PDF 與 圖片 (請盡量小於 1MB)</p>
-                        </div>
-                    </div>
-
-                    <div v-if="editorType === 'buy'" class="space-y-2">
-                        <div v-for="i in tempItems" class="flex gap-2">
-                            <input v-model="i.name" class="flex-1 bg-slate-950 p-3 rounded-xl text-xs" placeholder="項目">
-                            <input v-model.number="i.price" type="number" class="w-24 bg-slate-950 p-3 rounded-xl text-xs" placeholder="金額">
-                        </div>
-                    </div>
+                    <div v-if="editorType === 'note'"><textarea v-model="tempContent" class="w-full h-40 bg-slate-950 p-5 rounded-2xl text-sm font-mono text-slate-300" placeholder="內容描述..."></textarea></div>
+                    <div v-if="editorType === 'file'"><input type="file" @change="handleFileUpload" accept="application/pdf,image/*" class="text-xs text-slate-500"></div>
+                    <div v-if="editorType === 'buy'"><div v-for="i in tempItems" class="flex gap-2"><input v-model="i.name" class="flex-1 bg-slate-950 p-3 rounded-xl text-xs" placeholder="項目名"><input v-model.number="i.price" type="number" class="w-24 bg-slate-950 p-3 rounded-xl text-xs" placeholder="金額"></div></div>
                 </div>
                 <div class="flex gap-4 mt-10">
-                    <button @click="saveEvent" class="flex-1 bg-cyan-500 text-slate-950 font-black py-5 rounded-2xl shadow-xl hover:bg-cyan-400 transition uppercase tracking-widest">Publish & Sync</button>
+                    <button @click="saveEvent" class="flex-1 bg-cyan-500 text-slate-950 font-black py-5 rounded-2xl shadow-xl hover:bg-cyan-400 transition uppercase tracking-widest">Save & Sync</button>
                     <button @click="showEditor = false" class="px-8 py-5 text-slate-500 font-bold uppercase">Cancel</button>
                 </div>
             </div>
@@ -152,10 +129,10 @@
         const CLIENT_ID = '473225830945-jg4s7dn69f77bibo27cvouqh00h45hlf.apps.googleusercontent.com';
         const SCOPES = 'https://www.googleapis.com/auth/drive.file';
 
-        const { createApp, ref, computed, onMounted } = Vue;
+        const { createApp, ref, computed, onMounted, watch } = Vue;
         createApp({
             setup() {
-                const events = ref([]);
+                const events = ref(JSON.parse(localStorage.getItem('englog_local') || '[]'));
                 const isLoggedIn = ref(false);
                 const showEditor = ref(false);
                 const editorType = ref('note');
@@ -168,6 +145,11 @@
                 const tempFileData = ref('');
 
                 let tokenClient, driveFileId = null;
+
+                // 本地儲存監控
+                watch(events, (newVal) => {
+                    localStorage.setItem('englog_local', JSON.stringify(newVal));
+                }, { deep: true });
 
                 onMounted(() => {
                     const timer = setInterval(() => {
@@ -193,7 +175,11 @@
                     });
                 }
 
-                const handleAuth = () => tokenClient.requestAccessToken();
+                // 強制彈出授權視窗邏輯
+                const handleAuth = () => {
+                    tokenClient.requestAccessToken({ prompt: 'select_account consent' });
+                };
+
                 const handleSignout = () => { isLoggedIn.value = false; location.reload(); };
 
                 async function fetchCloudData() {
@@ -201,7 +187,9 @@
                     if (resp.result.files.length > 0) {
                         driveFileId = resp.result.files[0].id;
                         const content = await gapi.client.drive.files.get({ fileId: driveFileId, alt: 'media' });
-                        events.value = content.result || [];
+                        if (content.result && content.result.length > 0) {
+                            if (confirm('發現雲端資料，是否覆蓋本地？')) events.value = content.result;
+                        }
                     }
                 }
 
@@ -232,9 +220,16 @@
                     await uploadToDrive();
                 };
 
+                const downloadBackup = () => {
+                    const blob = new Blob([JSON.stringify(events.value, null, 2)], { type: 'application/json' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url; a.download = `englog_backup_${new Date().toLocaleDateString()}.json`;
+                    a.click();
+                };
+
                 const handleFileUpload = (e) => {
                     const file = e.target.files[0]; if(!file) return;
-                    if (file.size > 2 * 1024 * 1024) return alert('檔案太大囉 (上限 2MB)');
                     tempFile.value = file;
                     const r = new FileReader(); r.onload = (res) => tempFileData.value = res.target.result; r.readAsDataURL(file);
                 };
@@ -247,7 +242,8 @@
                 return { 
                     events, sortedEvents: computed(()=>[...events.value].sort((a,b)=>b.id-a.id)), 
                     isLoggedIn, showEditor, editorType, activeId, tempTitle, tempContent, tempItems, tempNeedsTodo,
-                    handleAuth, handleSignout, openEditor: (t)=>{editorType.value=t; tempTitle.value=''; tempContent.value=''; tempNeedsTodo.value=false; showEditor.value=true;}, 
+                    handleAuth, handleSignout, downloadBackup,
+                    openEditor: (t)=>{editorType.value=t; tempTitle.value=''; tempContent.value=''; tempNeedsTodo.value=false; showEditor.value=true;}, 
                     saveEvent, handleFileUpload, viewPDF, toggleStatus: async (e)=>{ e.isDone = !e.isDone; await uploadToDrive(); },
                     scrollToEvent: (id)=>{ activeId.value=id; document.getElementById('event-'+id).scrollIntoView({behavior:'smooth'}); },
                     deleteEvent: async (id)=>{ if(confirm('刪除？')) { events.value=events.value.filter(e=>e.id!==id); await uploadToDrive(); } }
