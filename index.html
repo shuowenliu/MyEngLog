@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EngLog Pro v7.0 - Supabase 版</title>
+    <title>EngLog Pro v7.1 - Supabase 穩定版</title>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
@@ -36,7 +36,7 @@
             <div class="flex items-center gap-4">
                 <div v-if="isLoggedIn" class="flex items-center gap-3 bg-emerald-500/5 px-4 py-2 rounded-full border border-emerald-500/20">
                     <i class="fas fa-bolt text-emerald-400 text-[10px]"></i>
-                    <span class="text-[9px] font-bold text-emerald-400 uppercase tracking-widest">Supabase Sync Live</span>
+                    <span class="text-[9px] font-bold text-emerald-400 uppercase tracking-widest">Live Sync</span>
                     <button @click="handleSignout" class="text-[9px] text-slate-500 hover:text-red-400 ml-1">登出</button>
                 </div>
                 <button v-else @click="handleAuth" class="bg-white text-slate-900 px-6 py-2 rounded-full text-xs font-black shadow-lg hover:bg-cyan-400 transition">Google 登入同步</button>
@@ -63,6 +63,7 @@
                 <div v-else v-for="event in sortedEvents" :id="'event-' + event.id" 
                      class="max-w-3xl mx-auto event-card p-8 rounded-[2rem] shadow-2xl relative"
                      :class="event.needsTodo ? (event.isDone ? 'is-done' : 'is-pending') : ''">
+                    
                     <div class="flex justify-between items-start mb-6">
                         <div>
                             <div class="flex items-center gap-3 mb-2">
@@ -114,7 +115,6 @@
     </div>
 
     <script>
-        // Supabase 設定
         const SUPABASE_URL = 'https://byrfhcmcnzhvwsedpleo.supabase.co';
         const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ5cmZoY21jbnpodndzZWRwbGVvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMwNDI5MjIsImV4cCI6MjA4ODYxODkyMn0.KgfxjKo4kasWfjasmpuM3DV0pzvmUVg-nx42-hVYc1w';
         const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -142,18 +142,13 @@
                         client_id: CLIENT_ID,
                         callback: handleCredentialResponse
                     });
-                    renderButton();
-                });
-
-                function renderButton() {
-                    // 自動登入檢查
                     const savedEmail = localStorage.getItem('englog_user');
                     if (savedEmail) {
                         userEmail.value = savedEmail;
                         isLoggedIn.value = true;
                         fetchSupabaseData();
                     }
-                }
+                });
 
                 async function handleCredentialResponse(response) {
                     const payload = JSON.parse(atob(response.credential.split('.')[1]));
@@ -166,20 +161,19 @@
                 const handleAuth = () => google.accounts.id.prompt();
                 const handleSignout = () => { localStorage.removeItem('englog_user'); location.reload(); };
 
-                // 從 Supabase 抓取
                 async function fetchSupabaseData() {
                     let { data, error } = await _supabase
                         .from('englog_data')
                         .select('content')
                         .eq('user_email', userEmail.value)
-                        .single();
+                        .maybeSingle();
                     
                     if (data) events.value = data.content;
                 }
 
-                // 存入 Supabase
                 async function syncToSupabase() {
                     if (!isLoggedIn.value) return;
+                    // 修正關鍵：upsert 必須對應 Unique 索引欄位
                     const { error } = await _supabase
                         .from('englog_data')
                         .upsert({ 
@@ -187,7 +181,7 @@
                             content: events.value 
                         }, { onConflict: 'user_email' });
                     
-                    if (error) alert('同步錯誤: ' + error.message);
+                    if (error) console.error('Supabase Sync Error:', error.message);
                 }
 
                 const saveEvent = async () => {
