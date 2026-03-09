@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EngLog Pro v7.3 - 大空間編輯版</title>
+    <title>EngLog Pro v7.5 - Timeline 狀態強化版</title>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
@@ -19,8 +19,12 @@
         .is-pending { border-left-color: #facc15; }
         .is-done { border-left-color: #22c55e; }
         .nav-active { background: rgba(34, 211, 238, 0.1); border-right: 3px solid #22d3ee; color: #22d3ee; }
-        /* 讓 Textarea 自動撐滿 */
-        .editor-textarea { min-height: 400px; resize: none; }
+        .editor-textarea { min-height: 450px; resize: none; }
+        
+        /* Timeline 狀態燈效果 */
+        .status-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; margin-right: 8px; }
+        .dot-pending { background-color: #facc15; box-shadow: 0 0 8px #facc15; }
+        .dot-done { background-color: #22c55e; }
     </style>
 </head>
 <body class="h-screen flex flex-col">
@@ -29,10 +33,22 @@
         <header class="h-20 flex-none glass border-b border-white/5 px-8 flex justify-between items-center z-50">
             <div class="flex items-center gap-6">
                 <h1 class="text-xl font-black italic text-white uppercase tracking-tighter">ENG<span class="text-cyan-400">LOG</span></h1>
-                <nav v-if="isLoggedIn && !isEditing" class="flex gap-2">
-                    <button @click="openEditor('note')" class="px-4 py-2 rounded-xl bg-sky-500/10 text-sky-400 text-xs font-bold border border-sky-500/20 hover:bg-sky-500 hover:text-white transition">撰寫日誌</button>
-                    <button @click="openEditor('buy')" class="px-4 py-2 rounded-xl bg-emerald-500/10 text-emerald-400 text-xs font-bold border border-emerald-500/20 hover:bg-emerald-500 hover:text-white transition">採購清單</button>
-                    <button @click="openEditor('file')" class="px-4 py-2 rounded-xl bg-red-500/10 text-red-400 text-xs font-bold border border-red-500/20 hover:bg-red-500 hover:text-white transition">文件上傳</button>
+                
+                <div v-if="isLoggedIn && !isEditing" class="flex gap-3 ml-4 border-l border-white/10 pl-6">
+                    <div class="flex flex-col">
+                        <span class="text-[9px] text-slate-500 font-bold uppercase tracking-widest">Pending</span>
+                        <span class="text-lg font-black text-yellow-400 leading-none">{{ pendingCount }}</span>
+                    </div>
+                    <div class="flex flex-col ml-4">
+                        <span class="text-[9px] text-slate-500 font-bold uppercase tracking-widest">Done</span>
+                        <span class="text-lg font-black text-emerald-400 leading-none">{{ completedCount }}</span>
+                    </div>
+                </div>
+
+                <nav v-if="isLoggedIn && !isEditing" class="flex gap-2 ml-4">
+                    <button @click="openEditor('note')" class="px-4 py-2 rounded-xl bg-sky-500/10 text-sky-400 text-xs font-bold border border-sky-500/20 hover:bg-sky-500 transition">撰寫日誌</button>
+                    <button @click="openEditor('buy')" class="px-4 py-2 rounded-xl bg-emerald-500/10 text-emerald-400 text-xs font-bold border border-emerald-500/20 hover:bg-emerald-500 transition">採購清單</button>
+                    <button @click="openEditor('file')" class="px-4 py-2 rounded-xl bg-red-500/10 text-red-400 text-xs font-bold border border-red-500/20 hover:bg-red-500 transition">文件上傳</button>
                 </nav>
             </div>
 
@@ -52,52 +68,60 @@
                 <div v-for="event in sortedEvents" :key="event.id" @click="scrollToEvent(event.id)"
                      :class="activeId === event.id ? 'nav-active' : 'text-slate-500 hover:bg-white/5'"
                      class="px-6 py-4 cursor-pointer transition flex flex-col gap-1 border-b border-white/5">
-                    <span class="text-[9px] font-mono opacity-40">{{ event.time.split(' ')[0] }}</span>
-                    <h4 class="text-xs font-bold truncate">{{ event.title || '未命名事件' }}</h4>
+                    
+                    <div class="flex items-center">
+                        <span v-if="event.needsTodo" :class="event.isDone ? 'status-dot dot-done' : 'status-dot dot-pending'"></span>
+                        <span class="text-[9px] font-mono opacity-40">{{ event.time.split(' ')[0] }}</span>
+                    </div>
+                    
+                    <h4 :class="event.needsTodo && !event.isDone ? 'text-white font-black' : 'text-slate-400 font-bold'" 
+                        class="text-xs truncate transition-colors">
+                        {{ event.title || '未命名事件' }}
+                    </h4>
                 </div>
             </aside>
 
             <main class="flex-1 overflow-y-auto custom-scroll relative bg-slate-900/10">
                 
-                <div v-if="isEditing" class="max-w-4xl mx-auto p-12 animate-in fade-in duration-300">
+                <div v-if="isEditing" class="max-w-4xl mx-auto p-12">
                     <div class="flex justify-between items-center mb-10">
                         <h2 class="text-3xl font-black italic text-white uppercase tracking-tighter">
-                            {{ editingId ? 'Edit' : 'New' }} <span class="text-cyan-400">{{ editorType }}</span>
+                            {{ editingId ? 'Update' : 'New' }} <span class="text-cyan-400">{{ editorType }}</span>
                         </h2>
                         <div class="flex gap-4">
-                            <button @click="saveEvent" class="bg-cyan-500 text-slate-950 px-8 py-3 rounded-2xl font-black shadow-lg hover:bg-cyan-400 transition uppercase tracking-widest text-sm">Save Changes</button>
+                            <button @click="saveEvent" class="bg-cyan-500 text-slate-950 px-8 py-3 rounded-2xl font-black shadow-lg hover:bg-cyan-400 transition uppercase tracking-widest text-sm italic">Save & Sync</button>
                             <button @click="isEditing = false" class="text-slate-500 font-bold hover:text-white transition uppercase text-sm">Cancel</button>
                         </div>
                     </div>
 
                     <div class="space-y-8">
                         <div>
-                            <label class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3 block italic">Title</label>
+                            <label class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3 block italic">Log Title</label>
                             <input v-model="tempTitle" class="w-full bg-slate-950/50 p-6 rounded-3xl border border-white/10 text-2xl font-bold text-white focus:border-cyan-500 outline-none transition" placeholder="輸入標題...">
                         </div>
 
-                        <div class="flex items-center gap-4 bg-white/5 p-5 rounded-3xl border border-white/5">
-                            <input type="checkbox" v-model="tempNeedsTodo" id="td-check" class="w-6 h-6 accent-cyan-500">
-                            <label for="td-check" class="text-base font-bold text-slate-300 italic">標記為待辦任務 (Action Required)</label>
+                        <div class="flex items-center gap-4 bg-white/5 p-5 rounded-3xl border border-white/5 cursor-pointer" @click="tempNeedsTodo = !tempNeedsTodo">
+                            <input type="checkbox" v-model="tempNeedsTodo" class="w-6 h-6 accent-cyan-500" @click.stop>
+                            <label class="text-base font-bold text-slate-300 italic cursor-pointer">標記為待處理任務 (Action Item)</label>
                         </div>
 
                         <div v-if="editorType === 'note'">
-                            <label class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3 block italic">Content</label>
-                            <textarea v-model="tempContent" class="w-full editor-textarea bg-slate-950/50 p-8 rounded-3xl border border-white/10 text-lg font-mono text-slate-300 focus:border-cyan-500 outline-none transition" placeholder="開始記錄您的工程日誌..."></textarea>
+                            <label class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3 block italic">Content Detail</label>
+                            <textarea v-model="tempContent" class="w-full editor-textarea bg-slate-950/50 p-8 rounded-3xl border border-white/10 text-lg font-mono text-slate-300 focus:border-cyan-500 outline-none transition" placeholder="撰寫詳細的工程紀錄..."></textarea>
                         </div>
 
                         <div v-if="editorType === 'file'" class="p-20 border-2 border-dashed border-white/10 rounded-3xl text-center bg-white/5">
-                            <i class="fas fa-cloud-upload-alt text-4xl text-slate-700 mb-4"></i>
+                            <i class="fas fa-file-invoice text-4xl text-slate-700 mb-4"></i>
                             <input type="file" @change="handleFileUpload" accept="application/pdf,image/*" class="block mx-auto text-sm text-slate-500">
                         </div>
 
                         <div v-if="editorType === 'buy'" class="space-y-3">
                              <div v-for="(item, index) in tempItems" :key="index" class="flex gap-4">
-                                <input v-model="item.name" class="flex-1 bg-slate-950/50 p-5 rounded-2xl border border-white/10 text-white" placeholder="項目名稱">
+                                <input v-model="item.name" class="flex-1 bg-slate-950/50 p-5 rounded-2xl border border-white/10 text-white" placeholder="硬體 / 零件名稱">
                                 <input v-model.number="item.price" type="number" class="w-32 bg-slate-950/50 p-5 rounded-2xl border border-white/10 text-emerald-400 font-bold" placeholder="金額">
                                 <button @click="tempItems.splice(index, 1)" class="text-slate-700 hover:text-red-500 px-2"><i class="fas fa-times"></i></button>
                              </div>
-                             <button @click="tempItems.push({name:'', price:0})" class="w-full py-4 border border-dashed border-white/10 rounded-2xl text-slate-500 hover:bg-white/5 transition">+ 新增項目</button>
+                             <button @click="tempItems.push({name:'', price:0})" class="w-full py-4 border border-dashed border-white/10 rounded-2xl text-slate-500 hover:bg-white/5 transition italic font-bold tracking-widest">+ ADD ITEM</button>
                         </div>
                     </div>
                 </div>
@@ -105,8 +129,8 @@
                 <div v-else class="p-12 space-y-10">
                     <div v-if="!isLoggedIn" class="max-w-xl mx-auto text-center py-20 border-2 border-dashed border-slate-800 rounded-[3rem]">
                         <i class="fas fa-database text-5xl text-slate-700 mb-6"></i>
-                        <h2 class="text-xl font-bold mb-4 text-white">使用 Supabase 同步</h2>
-                        <p class="text-slate-500 text-sm">請登入以開始您的工程紀錄。</p>
+                        <h2 class="text-xl font-bold mb-4 text-white uppercase italic">Offline</h2>
+                        <p class="text-slate-500 text-sm">請登入以開始雲端同步。</p>
                     </div>
 
                     <div v-else v-for="event in sortedEvents" :id="'event-' + event.id" 
@@ -118,13 +142,13 @@
                             <div>
                                 <div class="flex items-center gap-3 mb-3">
                                     <span class="text-[10px] bg-white/5 px-3 py-1 rounded-full text-slate-500 font-mono tracking-tighter">{{ event.time }}</span>
-                                    <span v-if="event.needsTodo" :class="event.isDone ? 'text-green-400 bg-green-400/10' : 'text-yellow-400 bg-yellow-400/10'" class="text-[10px] px-3 py-1 rounded-full font-black uppercase tracking-widest">{{ event.isDone ? 'Finished' : 'Action' }}</span>
+                                    <span v-if="event.needsTodo" :class="event.isDone ? 'text-green-400 bg-green-400/10' : 'text-yellow-400 bg-yellow-400/10'" class="text-[10px] px-3 py-1 rounded-full font-black uppercase tracking-widest">{{ event.isDone ? 'Finished' : 'Action Required' }}</span>
                                 </div>
                                 <h2 class="text-3xl font-black text-white tracking-tight leading-tight">{{ event.title }}</h2>
                             </div>
                             <div class="flex gap-3">
                                 <button v-if="event.needsTodo" @click.stop="toggleStatus(event)" class="w-12 h-12 rounded-2xl border border-white/10 flex items-center justify-center hover:bg-white/10 transition">
-                                    <i :class="event.isDone ? 'fas fa-check-circle text-green-400' : 'fas fa-circle text-yellow-500'"></i>
+                                    <i :class="event.isDone ? 'fas fa-check-circle text-green-400' : 'fas fa-circle text-yellow-500 text-xs shadow-[0_0_10px_rgba(234,179,8,0.5)]'"></i>
                                 </button>
                                 <button @click.stop="deleteEvent(event.id)" class="w-12 h-12 rounded-2xl border border-white/10 flex items-center justify-center text-slate-700 hover:text-red-400 transition">
                                     <i class="fas fa-trash-alt text-sm"></i>
@@ -144,9 +168,9 @@
                                 <i class="fas fa-file-pdf text-red-500 text-4xl"></i>
                                 <div class="flex-1 min-w-0">
                                     <p class="text-sm text-white font-bold truncate">{{ event.fileName }}</p>
-                                    <p class="text-[10px] text-slate-500 uppercase tracking-widest">Document Attachment</p>
+                                    <p class="text-[10px] text-slate-500 uppercase tracking-widest">Attached Document</p>
                                 </div>
-                                <button @click.stop="viewPDF(event.fileData)" class="px-8 py-3 bg-white text-slate-950 text-xs font-black rounded-2xl hover:bg-cyan-400 transition uppercase tracking-widest">Open File</button>
+                                <button @click.stop="viewPDF(event.fileData)" class="px-8 py-3 bg-white text-slate-950 text-xs font-black rounded-2xl hover:bg-cyan-400 transition uppercase tracking-widest">Open</button>
                             </div>
                         </div>
                     </div>
@@ -179,6 +203,9 @@
                 const tempFile = ref(null);
                 const tempFileData = ref('');
 
+                const pendingCount = computed(() => events.value.filter(e => e.needsTodo && !e.isDone).length);
+                const completedCount = computed(() => events.value.filter(e => e.needsTodo && e.isDone).length);
+
                 onMounted(() => {
                     google.accounts.id.initialize({ client_id: CLIENT_ID, callback: handleCredentialResponse });
                     const savedEmail = localStorage.getItem('englog_user');
@@ -207,21 +234,14 @@
                 }
 
                 const openEditor = (type) => {
-                    editingId.value = null;
-                    editorType.value = type;
-                    tempTitle.value = '';
-                    tempContent.value = '';
-                    tempNeedsTodo.value = false;
-                    tempItems.value = [{name:'', price:0}];
+                    editingId.value = null; editorType.value = type;
+                    tempTitle.value = ''; tempContent.value = ''; tempNeedsTodo.value = false; tempItems.value = [{name:'', price:0}];
                     isEditing.value = true;
                 };
 
                 const editEvent = (event) => {
-                    editingId.value = event.id;
-                    editorType.value = event.type;
-                    tempTitle.value = event.title;
-                    tempContent.value = event.content;
-                    tempNeedsTodo.value = event.needsTodo;
+                    editingId.value = event.id; editorType.value = event.type;
+                    tempTitle.value = event.title; tempContent.value = event.content; tempNeedsTodo.value = event.needsTodo;
                     tempItems.value = event.items ? JSON.parse(JSON.stringify(event.items)) : [{name:'', price:0}];
                     tempFileData.value = event.fileData || '';
                     isEditing.value = true;
@@ -242,6 +262,7 @@
 
                 return { 
                     events, sortedEvents: computed(()=>[...events.value].sort((a,b)=>b.id-a.id)), 
+                    pendingCount, completedCount,
                     isLoggedIn, isEditing, editorType, activeId, tempTitle, tempContent, tempItems, tempNeedsTodo, editingId,
                     handleAuth, handleSignout, openEditor, editEvent, saveEvent,
                     deleteEvent: async (id) => { if(confirm('確定刪除？')) { events.value = events.value.filter(e => e.id !== id); await syncToSupabase(); } },
