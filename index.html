@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>EngLog Cloud v5.1 - 登入修復版</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://accounts.google.com/gsi/client" defer></script>
+    <script src="https://apis.google.com/js/api.js" defer></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body { background: #020617; color: #e2e8f0; font-family: 'Inter', sans-serif; }
+        .glass { background: rgba(15, 23, 42, 0.9); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.05); }
+    </style>
+</head>
+<body class="h-screen flex flex-col">
+    <div id="app" class="flex flex-col h-full">
+        <header class="h-20 glass border-b border-white/5 px-8 flex justify-between items-center">
+            <h1 class="text-xl font-black italic text-white uppercase">ENG<span class="text-cyan-400">LOG</span></h1>
+            
+            <div class="flex items-center gap-4">
+                <div v-if="isLoggedIn" class="text-[10px] text-cyan-400 font-bold tracking-widest bg-cyan-500/10 px-4 py-2 rounded-full border border-cyan-500/20">
+                    <i class="fas fa-sync fa-spin mr-2"></i>雲端同步中
+                </div>
+                
+                <button v-if="!isLoggedIn" @click="handleAuth" :disabled="!isGapiLoaded" 
+                        class="bg-white text-slate-900 px-6 py-2 rounded-full text-xs font-black shadow-lg hover:bg-cyan-400 disabled:opacity-50 transition">
+                    <i class="fab fa-google mr-2"></i> {{ isGapiLoaded ? '登入 Google 同步' : '載入中...' }}
+                </button>
+                <button v-else @click="handleSignout" class="text-xs text-slate-500 hover:text-red-400">登出</button>
+            </div>
+        </header>
+
+        <main class="flex-1 p-10 overflow-y-auto">
+            <div v-if="!isLoggedIn" class="text-center py-20 bg-slate-900/50 rounded-[3rem] border border-dashed border-slate-800">
+                <i class="fas fa-cloud-upload-alt text-5xl text-slate-700 mb-6"></i>
+                <h2 class="text-xl font-bold mb-2">尚未連接雲端</h2>
+                <p class="text-slate-500 text-sm">請點擊右上角登入，以存取您在 Google Drive 的工程筆記。</p>
+            </div>
+            <div v-else class="max-w-3xl mx-auto space-y-6">
+                 <div v-for="e in events" :key="e.id" class="p-6 bg-slate-800/40 rounded-2xl border border-white/5">
+                    <h3 class="font-bold text-white">{{ e.title }}</h3>
+                    <p class="text-xs text-slate-500 mt-2">{{ e.content }}</p>
+                 </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const CLIENT_ID = '473225830945-jg4s7dn69f77bibo27cvouqh00h45hlf.apps.googleusercontent.com';
+        const SCOPES = 'https://www.googleapis.com/auth/drive.file';
+
+        const { createApp, ref, onMounted } = Vue;
+        createApp({
+            setup() {
+                const events = ref([]);
+                const isLoggedIn = ref(false);
+                const isGapiLoaded = ref(false);
+                let tokenClient;
+
+                // 2. 初始化核心
+                onMounted(() => {
+                    const checkGapi = setInterval(() => {
+                        if (typeof google !== 'undefined' && typeof gapi !== 'undefined') {
+                            clearInterval(checkGapi);
+                            initGoogleLibrary();
+                        }
+                    }, 500);
+                });
+
+                function initGoogleLibrary() {
+                    // 初始化登入客戶端
+                    tokenClient = google.accounts.oauth2.initTokenClient({
+                        client_id: CLIENT_ID,
+                        scope: SCOPES,
+                        callback: async (resp) => {
+                            if (resp.access_token) {
+                                isLoggedIn.value = true;
+                                await loadDriveAPI();
+                            }
+                        },
+                    });
+                    isGapiLoaded.value = true;
+                }
+
+                async function loadDriveAPI() {
+                    return new Promise((resolve) => {
+                        gapi.load('client', async () => {
+                            await gapi.client.init({ 'clientId': CLIENT_ID, 'scope': SCOPES });
+                            await gapi.client.load('drive', 'v3');
+                            await fetchFromDrive();
+                            resolve();
+                        });
+                    });
+                }
+
+                const handleAuth = () => {
+                    if (tokenClient) tokenClient.requestAccessToken();
+                };
+
+                const handleSignout = () => {
+                    isLoggedIn.value = false;
+                    location.reload(); // 登出後重新整理最乾淨
+                };
+
+                async function fetchFromDrive() {
+                    const resp = await gapi.client.drive.files.list({ 
+                        q: "name = 'englog_data.json' and trashed = false", 
+                        fields: 'files(id, name)' 
+                    });
+                    if (resp.result.files.length > 0) {
+                        const fileId = resp.result.files[0].id;
+                        const content = await gapi.client.drive.files.get({ fileId: fileId, alt: 'media' });
+                        events.value = content.result || [];
+                    }
+                }
+
+                return { events, isLoggedIn, isGapiLoaded, handleAuth, handleSignout };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
