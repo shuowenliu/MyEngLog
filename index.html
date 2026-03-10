@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EngLog Pro v7.6 - 試算表格版</title>
+    <title>EngLog Pro v7.7 - 雲端存儲版</title>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
@@ -20,16 +20,13 @@
         .is-pending { border-left-color: #facc15; }
         .is-done { border-left-color: #22c55e; }
         .nav-active { background: rgba(34, 211, 238, 0.1); border-right: 3px solid #22d3ee; color: #22d3ee; }
-        .editor-textarea { min-height: 450px; resize: none; }
+        .editor-textarea { min-height: 400px; resize: none; }
         .status-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; margin-right: 8px; }
         .dot-pending { background-color: #facc15; box-shadow: 0 0 8px #facc15; }
         .dot-done { background-color: #22c55e; }
-
-        /* 表格渲染樣式 */
         .markdown-body table { width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 0.9rem; background: rgba(255,255,255,0.02); }
         .markdown-body th { background: rgba(255,255,255,0.05); color: #22d3ee; padding: 12px; border: 1px solid rgba(255,255,255,0.1); text-align: left; }
         .markdown-body td { padding: 10px; border: 1px solid rgba(255,255,255,0.1); color: #cbd5e1; }
-        .markdown-body tr:hover { background: rgba(34, 211, 238, 0.05); }
     </style>
 </head>
 <body class="h-screen flex flex-col">
@@ -67,7 +64,7 @@
                         <span v-if="event.needsTodo" :class="event.isDone ? 'status-dot dot-done' : 'status-dot dot-pending'"></span>
                         <span class="text-[9px] font-mono opacity-40">{{ event.time.split(' ')[0] }}</span>
                     </div>
-                    <h4 :class="event.needsTodo && !event.isDone ? 'text-white font-black' : 'text-slate-400 font-bold'" class="text-xs truncate transition-colors">{{ event.title || '未命名事件' }}</h4>
+                    <h4 class="text-xs truncate font-bold" :class="event.needsTodo && !event.isDone ? 'text-white' : 'text-slate-400'">{{ event.title || '未命名事件' }}</h4>
                 </div>
             </aside>
 
@@ -76,37 +73,45 @@
                     <div class="flex justify-between items-center mb-10">
                         <h2 class="text-3xl font-black italic text-white uppercase tracking-tighter">{{ editingId ? 'Update' : 'New' }} <span class="text-cyan-400">{{ editorType }}</span></h2>
                         <div class="flex gap-4">
-                            <button @click="saveEvent" class="bg-cyan-500 text-slate-950 px-8 py-3 rounded-2xl font-black shadow-lg hover:bg-cyan-400 transition uppercase tracking-widest text-sm italic">Save & Sync</button>
+                            <button @click="saveEvent" :disabled="isUploading" class="bg-cyan-500 text-slate-950 px-8 py-3 rounded-2xl font-black shadow-lg hover:bg-cyan-400 transition uppercase text-sm disabled:opacity-50">
+                                {{ isUploading ? 'Uploading...' : 'Save & Sync' }}
+                            </button>
                             <button @click="isEditing = false" class="text-slate-500 font-bold hover:text-white transition uppercase text-sm">Cancel</button>
                         </div>
                     </div>
 
                     <div class="space-y-8">
-                        <input v-model="tempTitle" class="w-full bg-slate-950/50 p-6 rounded-3xl border border-white/10 text-2xl font-bold text-white outline-none" placeholder="輸入日誌標題...">
+                        <input v-model="tempTitle" class="w-full bg-slate-950/50 p-6 rounded-3xl border border-white/10 text-2xl font-bold text-white outline-none" placeholder="標題">
                         
-                        <div v-if="editorType === 'note'">
-                            <div class="flex items-center justify-between mb-3">
-                                <label class="text-[10px] font-bold text-slate-500 uppercase tracking-widest italic">Content</label>
-                                <button @click="insertTable" class="text-[10px] bg-white/5 px-3 py-1 rounded-lg border border-white/10 text-cyan-400 hover:bg-cyan-400/20 transition">
-                                    <i class="fas fa-table mr-2"></i>插入試算表格
-                                </button>
-                            </div>
-                            <textarea v-model="tempContent" class="w-full editor-textarea bg-slate-950/50 p-8 rounded-3xl border border-white/10 text-lg font-mono text-slate-300 outline-none" placeholder="在這裡記錄數據...可以使用 Markdown 語法"></textarea>
+                        <div class="flex items-center gap-4 bg-white/5 p-5 rounded-3xl border border-white/5 cursor-pointer" @click="tempNeedsTodo = !tempNeedsTodo">
+                            <input type="checkbox" v-model="tempNeedsTodo" class="w-6 h-6 accent-cyan-500" @click.stop>
+                            <label class="text-base font-bold text-slate-300 italic">標記為待處理任務</label>
                         </div>
-                        
+
+                        <div v-if="editorType === 'note'">
+                            <div class="flex justify-end mb-2"><button @click="insertTable" class="text-[10px] text-cyan-400 px-3 py-1 bg-cyan-400/10 rounded-lg">+ 插入表格語法</button></div>
+                            <textarea v-model="tempContent" class="w-full editor-textarea bg-slate-950/50 p-8 rounded-3xl border border-white/10 text-lg font-mono text-slate-300 outline-none"></textarea>
+                        </div>
+
+                        <div v-if="editorType === 'file'" class="p-20 border-2 border-dashed border-white/10 rounded-3xl text-center bg-white/5">
+                            <i class="fas fa-cloud-upload-alt text-4xl text-slate-700 mb-4"></i>
+                            <input type="file" @change="handleFileSelect" class="block mx-auto text-sm text-slate-500">
+                            <p class="mt-4 text-[10px] text-slate-500">檔案將安全儲存於 Supabase Storage (Max 50MB)</p>
+                        </div>
+
                         <div v-if="editorType === 'buy'" class="space-y-3">
                              <div v-for="(item, index) in tempItems" :key="index" class="flex gap-4">
-                                <input v-model="item.name" class="flex-1 bg-slate-950/50 p-5 rounded-2xl border border-white/10 text-white" placeholder="項目名稱">
+                                <input v-model="item.name" class="flex-1 bg-slate-950/50 p-5 rounded-2xl border border-white/10 text-white" placeholder="項目">
                                 <input v-model.number="item.price" type="number" class="w-32 bg-slate-950/50 p-5 rounded-2xl border border-white/10 text-emerald-400 font-bold">
-                                <button @click="tempItems.splice(index, 1)" class="text-slate-700 px-2"><i class="fas fa-times"></i></button>
+                                <button @click="tempItems.splice(index, 1)" class="text-slate-700"><i class="fas fa-times"></i></button>
                              </div>
-                             <button @click="tempItems.push({name:'', price:0})" class="w-full py-4 border border-dashed border-white/10 rounded-2xl text-slate-500 font-bold uppercase tracking-widest">+ Add Item</button>
+                             <button @click="tempItems.push({name:'', price:0})" class="w-full py-4 border border-dashed border-white/10 rounded-2xl text-slate-500 font-bold">+ Add Item</button>
                         </div>
                     </div>
                 </div>
 
                 <div v-else class="p-12 space-y-10">
-                    <div v-if="isLoggedIn" v-for="event in sortedEvents" :id="'event-' + event.id" @click="editEvent(event)"
+                    <div v-for="event in sortedEvents" :id="'event-' + event.id" @click="editEvent(event)"
                          class="max-w-3xl mx-auto event-card p-10 rounded-[3rem] shadow-2xl relative"
                          :class="event.needsTodo ? (event.isDone ? 'is-done' : 'is-pending') : ''">
                         
@@ -114,9 +119,9 @@
                             <div>
                                 <div class="flex items-center gap-3 mb-3">
                                     <span class="text-[10px] bg-white/5 px-3 py-1 rounded-full text-slate-500 font-mono">{{ event.time }}</span>
-                                    <span v-if="event.needsTodo" :class="event.isDone ? 'text-green-400 bg-green-400/10' : 'text-yellow-400 bg-yellow-400/10'" class="text-[10px] px-3 py-1 rounded-full font-black uppercase tracking-widest">{{ event.isDone ? 'Finished' : 'Action' }}</span>
+                                    <span v-if="event.needsTodo" :class="event.isDone ? 'text-green-400 bg-green-400/10' : 'text-yellow-400 bg-yellow-400/10'" class="text-[10px] px-3 py-1 rounded-full font-black uppercase tracking-widest">{{ event.isDone ? 'Done' : 'Action' }}</span>
                                 </div>
-                                <h2 class="text-3xl font-black text-white leading-tight">{{ event.title }}</h2>
+                                <h2 class="text-3xl font-black text-white tracking-tight">{{ event.title }}</h2>
                             </div>
                             <div class="flex gap-3">
                                 <button v-if="event.needsTodo" @click.stop="toggleStatus(event)" class="w-12 h-12 rounded-2xl border border-white/10 flex items-center justify-center hover:bg-white/10 transition"><i :class="event.isDone ? 'fas fa-check-circle text-green-400' : 'fas fa-circle text-yellow-500'"></i></button>
@@ -125,14 +130,14 @@
                         </div>
 
                         <div class="bg-black/20 p-8 rounded-[2rem] border border-white/5">
-                            <div v-if="event.type === 'note'" class="markdown-body text-slate-300 text-base font-mono leading-relaxed" v-html="renderMarkdown(event.content)"></div>
+                            <div v-if="event.type === 'note'" class="markdown-body text-slate-300 text-base font-mono" v-html="renderMarkdown(event.content)"></div>
                             <div v-if="event.type === 'buy'" class="space-y-2">
                                 <div v-for="i in event.items" class="flex justify-between text-sm py-2 border-b border-white/5"><span class="text-slate-300">{{ i.name }}</span><span class="text-emerald-400 font-bold">NT$ {{ i.price }}</span></div>
                             </div>
                             <div v-if="event.type === 'file'" class="flex items-center gap-6">
-                                <i class="fas fa-file-pdf text-red-500 text-4xl"></i>
+                                <i class="fas fa-file-invoice text-red-500 text-4xl"></i>
                                 <div class="flex-1"><p class="text-sm text-white font-bold truncate">{{ event.fileName }}</p></div>
-                                <button @click.stop="viewPDF(event.fileData)" class="px-8 py-3 bg-white text-slate-950 text-xs font-black rounded-2xl hover:bg-cyan-400 transition uppercase">Open</button>
+                                <button @click.stop="viewFile(event.fileData)" class="px-8 py-3 bg-white text-slate-950 text-xs font-black rounded-2xl hover:bg-cyan-400 transition uppercase">View File</button>
                             </div>
                         </div>
                     </div>
@@ -154,6 +159,7 @@
                 const events = ref([]);
                 const isLoggedIn = ref(false);
                 const isEditing = ref(false);
+                const isUploading = ref(false);
                 const userEmail = ref('');
                 const editingId = ref(null);
                 const editorType = ref('note');
@@ -164,9 +170,6 @@
                 const tempItems = ref([{name:'', price:0}]);
                 const tempFile = ref(null);
                 const tempFileData = ref('');
-
-                const pendingCount = computed(() => events.value.filter(e => e.needsTodo && !e.isDone).length);
-                const completedCount = computed(() => events.value.filter(e => e.needsTodo && e.isDone).length);
 
                 onMounted(() => {
                     google.accounts.id.initialize({ client_id: CLIENT_ID, callback: handleCredentialResponse });
@@ -192,48 +195,54 @@
 
                 async function syncToSupabase() {
                     if (!isLoggedIn.value) return;
-                    await _supabase.from('englog_data').upsert({ user_email: userEmail.value, content: events.value }, { onConflict: 'user_email' });
+                    const { error } = await _supabase.from('englog_data').upsert({ user_email: userEmail.value, content: events.value }, { onConflict: 'user_email' });
+                    if (error) alert("同步失敗，請檢查資料表 user_email 是否已改為 text 類型！");
                 }
 
-                const insertTable = () => {
-                    const tableTemplate = `\n| 測試項目 | 數值 | 狀態 |\n| :--- | :--- | :--- |\n| 電壓 | 3.3V | 正常 |\n| 溫度 | 25°C | 優 |\n\n`;
-                    tempContent.value += tableTemplate;
-                };
-
-                const renderMarkdown = (text) => {
-                    if (!text) return '';
-                    return marked.parse(text); // 將 Markdown 轉換為 HTML
-                };
-
                 const saveEvent = async () => {
+                    isUploading.value = true;
+                    let fileUrl = tempFileData.value;
+
+                    // 核心：上傳至 Storage
+                    if (tempFile.value && editorType.value === 'file') {
+                        const fileName = `${Date.now()}_${tempFile.value.name}`;
+                        const { data, error } = await _supabase.storage.from('englog_files').upload(fileName, tempFile.value);
+                        if (!error) {
+                            const { data: urlData } = _supabase.storage.from('englog_files').getPublicUrl(fileName);
+                            fileUrl = urlData.publicUrl;
+                        } else {
+                            alert("Storage 上傳失敗: " + error.message);
+                            isUploading.value = false;
+                            return;
+                        }
+                    }
+
                     if (editingId.value) {
                         const idx = events.value.findIndex(e => e.id === editingId.value);
-                        if (idx !== -1) events.value[idx] = { ...events.value[idx], title: tempTitle.value, content: tempContent.value, needsTodo: tempNeedsTodo.value, items: [...tempItems.value] };
+                        if (idx !== -1) events.value[idx] = { ...events.value[idx], title: tempTitle.value, content: tempContent.value, needsTodo: tempNeedsTodo.value, items: [...tempItems.value], fileData: fileUrl };
                     } else {
-                        events.value.push({ id: Date.now(), time: new Date().toLocaleString(), type: editorType.value, title: tempTitle.value, content: tempContent.value, items: [...tempItems.value], fileName: tempFile.value?.name, fileData: tempFileData.value, needsTodo: tempNeedsTodo.value, isDone: false });
+                        events.value.push({ id: Date.now(), time: new Date().toLocaleString(), type: editorType.value, title: tempTitle.value, content: tempContent.value, items: [...tempItems.value], fileName: tempFile.value?.name, fileData: fileUrl, needsTodo: tempNeedsTodo.value, isDone: false });
                     }
                     isEditing.value = false;
+                    isUploading.value = false;
                     await syncToSupabase();
                 };
 
-                const editEvent = (event) => {
-                    editingId.value = event.id; editorType.value = event.type;
-                    tempTitle.value = event.title; tempContent.value = event.content; tempNeedsTodo.value = event.needsTodo;
-                    tempItems.value = event.items ? JSON.parse(JSON.stringify(event.items)) : [{name:'', price:0}];
-                    tempFileData.value = event.fileData || '';
-                    isEditing.value = true;
-                };
-
                 return { 
-                    events, sortedEvents: computed(()=>[...events.value].sort((a,b)=>b.id-a.id)), 
-                    pendingCount, completedCount, isLoggedIn, isEditing, editorType, activeId, tempTitle, tempContent, tempItems, tempNeedsTodo, editingId,
-                    handleAuth, handleSignout, openEditor: (t) => { editingId.value = null; editorType.value = t; tempTitle.value = ''; tempContent.value = ''; tempNeedsTodo.value = false; tempItems.value = [{name:'', price:0}]; isEditing.value = true; },
-                    insertTable, renderMarkdown, editEvent, saveEvent,
+                    events, sortedEvents: computed(()=>[...events.value].sort((a,b)=>b.id-a.id)),
+                    pendingCount: computed(() => events.value.filter(e => e.needsTodo && !e.isDone).length),
+                    completedCount: computed(() => events.value.filter(e => e.needsTodo && e.isDone).length),
+                    isLoggedIn, isEditing, isUploading, editorType, activeId, tempTitle, tempContent, tempItems, tempNeedsTodo, editingId,
+                    handleAuth, handleSignout, 
+                    openEditor: (t) => { editingId.value = null; editorType.value = t; tempTitle.value = ''; tempContent.value = ''; tempNeedsTodo.value = false; tempItems.value = [{name:'', price:0}]; tempFile.value = null; isEditing.value = true; },
+                    editEvent: (e) => { editingId.value = e.id; editorType.value = e.type; tempTitle.value = e.title; tempContent.value = e.content; tempNeedsTodo.value = e.needsTodo; tempItems.value = e.items ? JSON.parse(JSON.stringify(e.items)) : [{name:'', price:0}]; tempFileData.value = e.fileData || ''; isEditing.value = true; },
+                    saveEvent, insertTable: () => { tempContent.value += `\n| 項目 | 數值 |\n| :--- | :--- |\n| 測試 | 0.0 |\n\n`; },
+                    renderMarkdown: (t) => t ? marked.parse(t) : '',
+                    handleFileSelect: (e) => { tempFile.value = e.target.files[0]; },
+                    viewFile: (url) => window.open(url, '_blank'),
                     deleteEvent: async (id) => { if(confirm('刪除？')) { events.value = events.value.filter(e => e.id !== id); await syncToSupabase(); } },
-                    handleFileUpload: (e) => { const file = e.target.files[0]; if(!file) return; tempFile.value = file; const r = new FileReader(); r.onload = (res) => tempFileData.value = res.target.result; r.readAsDataURL(file); },
-                    viewPDF: (data) => { const nt = window.open(); nt.document.write(`<iframe src="${data}" frameborder="0" style="border:0; width:100%; height:100%;" allowfullscreen></iframe>`); },
                     toggleStatus: async (e)=>{ e.isDone = !e.isDone; await syncToSupabase(); },
-                    scrollToEvent: (id)=>{ activeId.value=id; document.getElementById('event-'+id).scrollIntoView({behavior:'smooth'}); },
+                    scrollToEvent: (id)=>{ activeId.value=id; document.getElementById('event-'+id).scrollIntoView({behavior:'smooth'}); }
                 };
             }
         }).mount('#app');
